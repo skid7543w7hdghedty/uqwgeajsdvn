@@ -1,275 +1,746 @@
+-- Services
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local TweenService = game:GetService("TweenService")
+local CoreGui = game:GetService("CoreGui")
 
-local player = Players.LocalPlayer
-local mouse = player:GetMouse()
+-- UI Elements
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "KeystrokeUI"
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = CoreGui
 
--- Visual state storage (parameters only)
-local visualState = {
-    time = 0,
-    rotationProgress = 0,
-    currentRotationSpeed = 0.8,
-    smoothedRotation = 5,
-    -- Lines params: size, position, color
-    lines = {
-        top = {Size = UDim2.new(0, 3, 0, 25), Position = UDim2.new(0.5, -1.5, 0, 0), Color = Color3.new(1,1,1)},
-        bottom = {Size = UDim2.new(0, 3, 0, 25), Position = UDim2.new(0.5, -1.5, 1, -25), Color = Color3.new(1,1,1)},
-        left = {Size = UDim2.new(0, 25, 0, 3), Position = UDim2.new(0, 0, 0.5, -1.5), Color = Color3.new(1,1,1)},
-        right = {Size = UDim2.new(0, 25, 0, 3), Position = UDim2.new(1, -25, 0.5, -1.5), Color = Color3.new(1,1,1)},
-    },
-    -- Text params
-    text = {
-        Text = "Adrenalin.win",
-        Position = UDim2.new(0, 0, 0, 0),
-        Color = Color3.new(1,1,1),
-        Font = Enum.Font.Arcade,
-        TextScaled = true,
-    }
+local Frame = Instance.new("Frame")
+Frame.Parent = ScreenGui
+Frame.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+Frame.BackgroundTransparency = 0.4
+Frame.BorderSizePixel = 0
+Frame.Position = UDim2.new(0.05, 0, 0.33, 0)
+Frame.Active = true
+
+local UICorner = Instance.new("UICorner")
+UICorner.Parent = Frame
+
+local UIStroke = Instance.new("UIStroke")
+UIStroke.Parent = Frame
+UIStroke.Thickness = 2
+UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+local function animateStroke()
+	local hue = 0
+	while true do
+		UIStroke.Color = Color3.fromHSV(hue, 1, 1)
+		hue = (hue + 0.01) % 1
+		task.wait(0.05)
+	end
+end
+task.spawn(animateStroke)
+
+local base_u = 26
+local gap = 2
+local main_y_offset = 9
+local keys = {}
+local max_x = 0
+local nav_gap = 42
+
+-- Function Row
+local row0 = {
+	{"Esc", Enum.KeyCode.Escape, 1, true},
+	{"F1", Enum.KeyCode.F1, 1, true},
+	{"F2", Enum.KeyCode.F2, 1, true},
+	{"F3", Enum.KeyCode.F3, 1, true},
+	{"F4", Enum.KeyCode.F4, 1, true},
+	{"F5", Enum.KeyCode.F5, 1, true},
+	{"F6", Enum.KeyCode.F6, 1, true},
+	{"F7", Enum.KeyCode.F7, 1, true},
+	{"F8", Enum.KeyCode.F8, 1, true},
+	{"F9", Enum.KeyCode.F9, 1, true},
+	{"F10", Enum.KeyCode.F10, 1, true},
+	{"F11", Enum.KeyCode.F11, 1, true},
+	{"F12", Enum.KeyCode.F12, 1, true},
 }
 
-local screenGui
-local aimContainer
-local topLine, bottomLine, leftLine, rightLine
-local textLabel
-
-local lineLength = 25
-local lineThickness = 3
-local baseRotationSpeed = 0.8
-local pulseSpeed = 2.5
-local minLength = -10
-local maxLength = -30
-
-local time = 0
-local rotationProgress = 0
-local currentRotationSpeed = baseRotationSpeed
-local smoothedRotation = 5
-
--- Helper to create line
-local function createLine(parent, size, position, color)
-    local frame = Instance.new("Frame")
-    frame.Size = size
-    frame.Position = position
-    frame.BackgroundColor3 = color
-    frame.BorderSizePixel = 0
-    frame.ZIndex = 5
-    frame.Parent = parent
-
-    local stroke = Instance.new("UIStroke")
-    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-    stroke.Color = Color3.new(0,0,0)
-    stroke.Thickness = 1
-    stroke.Parent = frame
-
-    return frame
+local current_x = 0
+local y = 0
+for i, keyData in ipairs(row0) do
+	if i > 1 then
+		local added_gap = gap
+		local prev_name = row0[i-1][1]
+		if prev_name == "Esc" or prev_name == "F4" or prev_name == "F8" then
+			added_gap = added_gap + 9
+		end
+		current_x = current_x + added_gap
+	end
+	local name = keyData[1]
+	local keycode = keyData[2]
+	local width = keyData[3] or 1
+	local allowGP = keyData[4] or false
+	local key_width = width * base_u
+	local position = UDim2.new(0, current_x, 0, y)
+	local size = UDim2.new(0, key_width, 0, base_u)
+	table.insert(keys, {Name = name, KeyCode = keycode, Position = position, Size = size, AllowGameProcessed = allowGP})
+	current_x = current_x + key_width
+	max_x = math.max(max_x, current_x)
 end
 
--- Helper to create text with outline
-local function createTextLabel(parent, text, position, color, font, scaled)
-    local label = Instance.new("TextLabel")
-    label.Text = text
-    label.Position = position
-    label.TextColor3 = color
-    label.Font = font
-    label.TextScaled = scaled
-    label.BackgroundTransparency = 1
-    label.Size = UDim2.new(0, 150, 0, 23)
-    label.ZIndex = 10
-    label.Parent = parent
+local main_kb_right = max_x
 
-    local stroke = Instance.new("UIStroke")
-    stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Contextual
-    stroke.Color = Color3.new(0,0,0)
-    stroke.Thickness = 1
-    stroke.LineJoinMode = Enum.LineJoinMode.Round
-    stroke.Parent = label
-
-    return label
+local nav_cluster_x = main_kb_right + nav_gap
+local nav_row0 = {
+	{"PS", Enum.KeyCode.Print, 1, true},
+	{"SL", Enum.KeyCode.ScrollLock, 1, true},
+	{"PB", Enum.KeyCode.Pause, 1, true},
+}
+current_x = nav_cluster_x
+for i, keyData in ipairs(nav_row0) do
+	if i > 1 then current_x = current_x + gap end
+	local key_width = base_u
+	table.insert(keys, {Name = keyData[1], KeyCode = keyData[2], Position = UDim2.new(0, current_x, 0, 0), Size = UDim2.new(0, key_width, 0, base_u), AllowGameProcessed = keyData[4] or false})
+	current_x = current_x + key_width
 end
 
--- Clear previous GUI if exists
-local function clearGui()
-    if screenGui then
-        screenGui:Destroy()
-        screenGui = nil
-    end
+local rows = {
+	{
+		{"`", Enum.KeyCode.Backquote, 1, true},
+		{"1", Enum.KeyCode.One, 1, true},
+		{"2", Enum.KeyCode.Two, 1, true},
+		{"3", Enum.KeyCode.Three, 1, true},
+		{"4", Enum.KeyCode.Four, 1, true},
+		{"5", Enum.KeyCode.Five, 1, true},
+		{"6", Enum.KeyCode.Six, 1, true},
+		{"7", Enum.KeyCode.Seven, 1, true},
+		{"8", Enum.KeyCode.Eight, 1, true},
+		{"9", Enum.KeyCode.Nine, 1, true},
+		{"0", Enum.KeyCode.Zero, 1, true},
+		{"-", Enum.KeyCode.Minus, 1, true},
+		{"=", Enum.KeyCode.Equals, 1, true},
+		{"Back", Enum.KeyCode.Backspace, 2, true},
+	},
+	{
+		{"Tab", Enum.KeyCode.Tab, 1.5, true},
+		{"Q", Enum.KeyCode.Q, 1, true},
+		{"W", Enum.KeyCode.W, 1, true},
+		{"E", Enum.KeyCode.E, 1, true},
+		{"R", Enum.KeyCode.R, 1, true},
+		{"T", Enum.KeyCode.T, 1, true},
+		{"Y", Enum.KeyCode.Y, 1, true},
+		{"U", Enum.KeyCode.U, 1, true},
+		{"I", Enum.KeyCode.I, 1, true},
+		{"O", Enum.KeyCode.O, 1, true},
+		{"P", Enum.KeyCode.P, 1, true},
+		{"[", Enum.KeyCode.LeftBracket, 1, true},
+		{"]", Enum.KeyCode.RightBracket, 1, true},
+		{"\\", Enum.KeyCode.BackSlash, 1.5, true},
+	},
+	{
+		{"Caps", Enum.KeyCode.CapsLock, 1.75, true},
+		{"A", Enum.KeyCode.A, 1, true},
+		{"S", Enum.KeyCode.S, 1, true},
+		{"D", Enum.KeyCode.D, 1, true},
+		{"F", Enum.KeyCode.F, 1, true},
+		{"G", Enum.KeyCode.G, 1, true},
+		{"H", Enum.KeyCode.H, 1, true},
+		{"J", Enum.KeyCode.J, 1, true},
+		{"K", Enum.KeyCode.K, 1, true},
+		{"L", Enum.KeyCode.L, 1, true},
+		{";", Enum.KeyCode.Semicolon, 1, true},
+		{"'", Enum.KeyCode.Quote, 1, true},
+		{"Enter", Enum.KeyCode.Return, 2.25, true},
+	},
+	{
+		{"LShift", Enum.KeyCode.LeftShift, 2.25, true},
+		{"Z", Enum.KeyCode.Z, 1, true},
+		{"X", Enum.KeyCode.X, 1, true},
+		{"C", Enum.KeyCode.C, 1, true},
+		{"V", Enum.KeyCode.V, 1, true},
+		{"B", Enum.KeyCode.B, 1, true},
+		{"N", Enum.KeyCode.N, 1, true},
+		{"M", Enum.KeyCode.M, 1, true},
+		{",", Enum.KeyCode.Comma, 1, true},
+		{".", Enum.KeyCode.Period, 1, true},
+		{"/", Enum.KeyCode.Slash, 1, true},
+		{"RShift", Enum.KeyCode.RightShift, 2.75, true},
+	},
+	{
+		{"LCtrl", Enum.KeyCode.LeftControl, 1.25, true},
+		{"Win", Enum.KeyCode.LeftSuper, 1.25, true},
+		{"LAlt", Enum.KeyCode.LeftAlt, 1.25, true},
+		{"Spacebar", Enum.KeyCode.Space, 6.25, true},
+		{"RAlt", Enum.KeyCode.RightAlt, 1.25, true},
+		{"Fn", nil, 1.25, true},
+		{"Menu", Enum.KeyCode.Menu, 1.25, true},
+		{"RCtrl", Enum.KeyCode.RightControl, 1.25, true},
+	},
+}
+
+local row_y_offset = main_y_offset + base_u + gap + 7
+for row_index, row in ipairs(rows) do
+	current_x = 0
+	y = row_y_offset + (row_index - 1) * (base_u + gap)
+	for i, keyData in ipairs(row) do
+		if i > 1 then
+			current_x = current_x + gap
+		end
+		local name = keyData[1]
+		local keycode = keyData[2]
+		local width = keyData[3] or 1
+		local allowGP = keyData[4] or false
+		local key_width = width * base_u
+		local position = UDim2.new(0, current_x, 0, y)
+		local size = UDim2.new(0, key_width, 0, base_u)
+		table.insert(keys, {Name = name, KeyCode = keycode, Position = position, Size = size, AllowGameProcessed = allowGP})
+		current_x = current_x + key_width
+		max_x = math.max(max_x, current_x)
+	end
 end
 
--- Create GUI elements fresh and restore from visualState parameters
-local function createGui()
-    clearGui()
+local nav_row1_y = row_y_offset
+local nav_row2_y = row_y_offset + (base_u + gap)
 
-    screenGui = Instance.new("ScreenGui")
-    screenGui.Name = "AimSightGUI"
-    screenGui.ResetOnSpawn = false
-    screenGui.Parent = player:WaitForChild("PlayerGui")
+local nav_row1 = {
+	{"INS", Enum.KeyCode.Insert, 1, true},
+	{"HM", Enum.KeyCode.Home, 1, true},
+	{"PU", Enum.KeyCode.PageUp, 1, true},
+}
+local nav_row2 = {
+	{"DEL", Enum.KeyCode.Delete, 1, true},
+	{"END", Enum.KeyCode.End, 1, true},
+	{"PD", Enum.KeyCode.PageDown, 1, true},
+}
 
-    aimContainer = Instance.new("Frame")
-    aimContainer.BackgroundTransparency = 1
-    aimContainer.Size = UDim2.new(0, 25, 0, 25)
-    aimContainer.AnchorPoint = Vector2.new(0.5, 0.5)
-    aimContainer.Parent = screenGui
-
-    -- Create lines with saved params
-    topLine = createLine(aimContainer, visualState.lines.top.Size, visualState.lines.top.Position, visualState.lines.top.Color)
-    bottomLine = createLine(aimContainer, visualState.lines.bottom.Size, visualState.lines.bottom.Position, visualState.lines.bottom.Color)
-    leftLine = createLine(aimContainer, visualState.lines.left.Size, visualState.lines.left.Position, visualState.lines.left.Color)
-    rightLine = createLine(aimContainer, visualState.lines.right.Size, visualState.lines.right.Position, visualState.lines.right.Color)
-
-    -- Create text label with saved params
-    textLabel = createTextLabel(screenGui, visualState.text.Text, visualState.text.Position, visualState.text.Color, visualState.text.Font, visualState.text.TextScaled)
+current_x = nav_cluster_x
+for i, keyData in ipairs(nav_row1) do
+	if i > 1 then current_x = current_x + gap end
+	local key_width = base_u
+	table.insert(keys, {Name = keyData[1], KeyCode = keyData[2], Position = UDim2.new(0, current_x, 0, nav_row1_y), Size = UDim2.new(0, key_width, 0, base_u), AllowGameProcessed = keyData[4] or false})
+	current_x = current_x + key_width
 end
 
--- Save current GUI parameters into visualState table
-local function saveVisualState()
-    visualState.time = time
-    visualState.rotationProgress = rotationProgress
-    visualState.currentRotationSpeed = currentRotationSpeed
-    visualState.smoothedRotation = smoothedRotation
-
-    visualState.lines.top.Size = topLine.Size
-    visualState.lines.top.Position = topLine.Position
-    visualState.lines.top.Color = topLine.BackgroundColor3
-
-    visualState.lines.bottom.Size = bottomLine.Size
-    visualState.lines.bottom.Position = bottomLine.Position
-    visualState.lines.bottom.Color = bottomLine.BackgroundColor3
-
-    visualState.lines.left.Size = leftLine.Size
-    visualState.lines.left.Position = leftLine.Position
-    visualState.lines.left.Color = leftLine.BackgroundColor3
-
-    visualState.lines.right.Size = rightLine.Size
-    visualState.lines.right.Position = rightLine.Position
-    visualState.lines.right.Color = rightLine.BackgroundColor3
-
-    visualState.text.Text = textLabel.Text
-    visualState.text.Position = textLabel.Position
-    visualState.text.Color = textLabel.TextColor3
-    visualState.text.Font = textLabel.Font
-    visualState.text.TextScaled = textLabel.TextScaled
+current_x = nav_cluster_x
+for i, keyData in ipairs(nav_row2) do
+	if i > 1 then current_x = current_x + gap end
+	local key_width = base_u
+	table.insert(keys, {Name = keyData[1], KeyCode = keyData[2], Position = UDim2.new(0, current_x, 0, nav_row2_y), Size = UDim2.new(0, key_width, 0, base_u), AllowGameProcessed = keyData[4] or false})
+	current_x = current_x + key_width
 end
 
--- Restore visual state parameters to GUI elements
-local function restoreVisualState()
-    if not (topLine and bottomLine and leftLine and rightLine and textLabel) then
-        return
-    end
+local arrow_row1_y = row_y_offset + 3 * (base_u + gap)
+local arrow_row2_y = row_y_offset + 4 * (base_u + gap)
+local arrow_x = nav_cluster_x
 
-    time = visualState.time or 0
-    rotationProgress = visualState.rotationProgress or 0
-    currentRotationSpeed = visualState.currentRotationSpeed or baseRotationSpeed
-    smoothedRotation = visualState.smoothedRotation or 5
+local up_x = arrow_x + (base_u + gap)
+table.insert(keys, {Name = "↑", KeyCode = Enum.KeyCode.Up, Position = UDim2.new(0, up_x, 0, arrow_row1_y), Size = UDim2.new(0, base_u, 0, base_u), AllowGameProcessed = true})
 
-    topLine.Size = visualState.lines.top.Size or topLine.Size
-    topLine.Position = visualState.lines.top.Position or topLine.Position
-    topLine.BackgroundColor3 = visualState.lines.top.Color or topLine.BackgroundColor3
-
-    bottomLine.Size = visualState.lines.bottom.Size or bottomLine.Size
-    bottomLine.Position = visualState.lines.bottom.Position or bottomLine.Position
-    bottomLine.BackgroundColor3 = visualState.lines.bottom.Color or bottomLine.BackgroundColor3
-
-    leftLine.Size = visualState.lines.left.Size or leftLine.Size
-    leftLine.Position = visualState.lines.left.Position or leftLine.Position
-    leftLine.BackgroundColor3 = visualState.lines.left.Color or leftLine.BackgroundColor3
-
-    rightLine.Size = visualState.lines.right.Size or rightLine.Size
-    rightLine.Position = visualState.lines.right.Position or rightLine.Position
-    rightLine.BackgroundColor3 = visualState.lines.right.Color or rightLine.BackgroundColor3
-
-    textLabel.Text = visualState.text.Text or textLabel.Text
-    textLabel.Position = visualState.text.Position or textLabel.Position
-    textLabel.TextColor3 = visualState.text.Color or textLabel.TextColor3
-    textLabel.Font = visualState.text.Font or textLabel.Font
-    textLabel.TextScaled = visualState.text.TextScaled or textLabel.TextScaled
+local arrow_bottom = {
+	{"←", Enum.KeyCode.Left, 1, true},
+	{"↓", Enum.KeyCode.Down, 1, true},
+	{"→", Enum.KeyCode.Right, 1, true},
+}
+current_x = arrow_x
+for i, keyData in ipairs(arrow_bottom) do
+	if i > 1 then current_x = current_x + gap end
+	local key_width = base_u
+	table.insert(keys, {Name = keyData[1], KeyCode = keyData[2], Position = UDim2.new(0, current_x, 0, arrow_row2_y), Size = UDim2.new(0, key_width, 0, base_u), AllowGameProcessed = keyData[4] or false})
+	current_x = current_x + key_width
 end
 
--- Function to get rainbow color by time
-local function getRainbowColor(t)
-    local r = math.sin(t * 0.6) * 0.5 + 0.5
-    local g = math.sin(t * 0.6 + 2) * 0.5 + 0.5
-    local b = math.sin(t * 0.6 + 4) * 0.5 + 0.5
-    return Color3.new(r, g, b)
+max_x = math.max(nav_cluster_x + (3 * base_u) + (2 * gap), max_x)
+
+local keyboard_height = row_y_offset + 5 * (base_u + gap)
+
+-- ==========================================
+-- MOUSE
+-- ==========================================
+local mouseWidth = 88
+local mouseHeight = 132
+local sideButtonWidth = 13
+local sideButtonHeight = 26
+local sideButtonGap = 4
+local mouseGap = 32
+local mouse_x = max_x + mouseGap
+local mouse_y = row_y_offset + math.floor((keyboard_height - row_y_offset - mouseHeight) / 2)
+
+-- Декоративные боковые кнопки
+local mb4Button = Instance.new("Frame")
+mb4Button.Name = "MB4"
+mb4Button.Parent = Frame
+mb4Button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+mb4Button.BackgroundTransparency = 0.3
+mb4Button.BorderSizePixel = 0
+mb4Button.Position = UDim2.new(0, mouse_x - sideButtonWidth - 2, 0, mouse_y + 26)
+mb4Button.Size = UDim2.new(0, sideButtonWidth, 0, sideButtonHeight)
+
+local mb4Corner = Instance.new("UICorner")
+mb4Corner.CornerRadius = UDim.new(0, 3)
+mb4Corner.Parent = mb4Button
+
+local mb4Stroke = Instance.new("UIStroke")
+mb4Stroke.Parent = mb4Button
+mb4Stroke.Thickness = 1
+mb4Stroke.Color = Color3.fromRGB(90, 90, 90)
+
+local mb5Button = Instance.new("Frame")
+mb5Button.Name = "MB5"
+mb5Button.Parent = Frame
+mb5Button.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+mb5Button.BackgroundTransparency = 0.3
+mb5Button.BorderSizePixel = 0
+mb5Button.Position = UDim2.new(0, mouse_x - sideButtonWidth - 2, 0, mouse_y + 26 + sideButtonHeight + sideButtonGap)
+mb5Button.Size = UDim2.new(0, sideButtonWidth, 0, sideButtonHeight)
+
+local mb5Corner = Instance.new("UICorner")
+mb5Corner.CornerRadius = UDim.new(0, 3)
+mb5Corner.Parent = mb5Button
+
+local mb5Stroke = Instance.new("UIStroke")
+mb5Stroke.Parent = mb5Button
+mb5Stroke.Thickness = 1
+mb5Stroke.Color = Color3.fromRGB(90, 90, 90)
+
+local mb4Label = Instance.new("TextLabel")
+mb4Label.Parent = mb4Button
+mb4Label.BackgroundTransparency = 1
+mb4Label.Size = UDim2.new(1, 0, 1, 0)
+mb4Label.Font = Enum.Font.GothamBold
+mb4Label.Text = "▲"
+mb4Label.TextColor3 = Color3.fromRGB(100, 100, 100)
+mb4Label.TextSize = 8
+
+local mb5Label = Instance.new("TextLabel")
+mb5Label.Parent = mb5Button
+mb5Label.BackgroundTransparency = 1
+mb5Label.Size = UDim2.new(1, 0, 1, 0)
+mb5Label.Font = Enum.Font.GothamBold
+mb5Label.Text = "▼"
+mb5Label.TextColor3 = Color3.fromRGB(100, 100, 100)
+mb5Label.TextSize = 8
+
+local mouseFrame = Instance.new("Frame")
+mouseFrame.Name = "MouseBody"
+mouseFrame.Parent = Frame
+mouseFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+mouseFrame.BackgroundTransparency = 0.3
+mouseFrame.BorderSizePixel = 0
+mouseFrame.Position = UDim2.new(0, mouse_x, 0, mouse_y)
+mouseFrame.Size = UDim2.new(0, mouseWidth, 0, mouseHeight)
+
+local mouseBodyCorner = Instance.new("UICorner")
+mouseBodyCorner.CornerRadius = UDim.new(0, 22)
+mouseBodyCorner.Parent = mouseFrame
+
+local mouseBodyStroke = Instance.new("UIStroke")
+mouseBodyStroke.Parent = mouseFrame
+mouseBodyStroke.Thickness = 2
+mouseBodyStroke.Color = Color3.fromRGB(100, 100, 100)
+mouseBodyStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+
+local buttonAreaHeight = 46
+local dividerWidth = 2
+local scrollWheelWidth = 12
+local scrollWheelHeight = 18
+
+local lmbWidth = math.floor((mouseWidth - dividerWidth) / 2)
+local lmbButton = Instance.new("TextButton")
+lmbButton.Name = "LMB"
+lmbButton.Parent = mouseFrame
+lmbButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+lmbButton.BackgroundTransparency = 0.3
+lmbButton.BorderSizePixel = 0
+lmbButton.Position = UDim2.new(0, 0, 0, 0)
+lmbButton.Size = UDim2.new(0, lmbWidth, 0, buttonAreaHeight)
+lmbButton.Font = Enum.Font.GothamBold
+lmbButton.Text = "L"
+lmbButton.TextColor3 = Color3.fromRGB(180, 180, 180)
+lmbButton.TextSize = 10
+lmbButton.AutoButtonColor = false
+
+local lmbCorner = Instance.new("UICorner")
+lmbCorner.CornerRadius = UDim.new(0, 16)
+lmbCorner.Parent = lmbButton
+
+local lmbClipBottom = Instance.new("Frame")
+lmbClipBottom.Parent = lmbButton
+lmbClipBottom.BackgroundColor3 = lmbButton.BackgroundColor3
+lmbClipBottom.BackgroundTransparency = lmbButton.BackgroundTransparency
+lmbClipBottom.BorderSizePixel = 0
+lmbClipBottom.Position = UDim2.new(0, 0, 1, -9)
+lmbClipBottom.Size = UDim2.new(1, 0, 0, 9)
+
+local lmbClipRight = Instance.new("Frame")
+lmbClipRight.Parent = lmbButton
+lmbClipRight.BackgroundColor3 = lmbButton.BackgroundColor3
+lmbClipRight.BackgroundTransparency = lmbButton.BackgroundTransparency
+lmbClipRight.BorderSizePixel = 0
+lmbClipRight.Position = UDim2.new(1, -9, 0, 0)
+lmbClipRight.Size = UDim2.new(0, 9, 1, 0)
+
+local rmbWidth = mouseWidth - lmbWidth - dividerWidth
+local rmbButton = Instance.new("TextButton")
+rmbButton.Name = "RMB"
+rmbButton.Parent = mouseFrame
+rmbButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+rmbButton.BackgroundTransparency = 0.3
+rmbButton.BorderSizePixel = 0
+rmbButton.Position = UDim2.new(0, lmbWidth + dividerWidth, 0, 0)
+rmbButton.Size = UDim2.new(0, rmbWidth, 0, buttonAreaHeight)
+rmbButton.Font = Enum.Font.GothamBold
+rmbButton.Text = "R"
+rmbButton.TextColor3 = Color3.fromRGB(180, 180, 180)
+rmbButton.TextSize = 10
+rmbButton.AutoButtonColor = false
+
+local rmbCorner = Instance.new("UICorner")
+rmbCorner.CornerRadius = UDim.new(0, 16)
+rmbCorner.Parent = rmbButton
+
+local rmbClipBottom = Instance.new("Frame")
+rmbClipBottom.Parent = rmbButton
+rmbClipBottom.BackgroundColor3 = rmbButton.BackgroundColor3
+rmbClipBottom.BackgroundTransparency = rmbButton.BackgroundTransparency
+rmbClipBottom.BorderSizePixel = 0
+rmbClipBottom.Position = UDim2.new(0, 0, 1, -9)
+rmbClipBottom.Size = UDim2.new(1, 0, 0, 9)
+
+local rmbClipLeft = Instance.new("Frame")
+rmbClipLeft.Parent = rmbButton
+rmbClipLeft.BackgroundColor3 = rmbButton.BackgroundColor3
+rmbClipLeft.BackgroundTransparency = rmbButton.BackgroundTransparency
+rmbClipLeft.BorderSizePixel = 0
+rmbClipLeft.Position = UDim2.new(0, 0, 0, 0)
+rmbClipLeft.Size = UDim2.new(0, 9, 1, 0)
+
+local divider = Instance.new("Frame")
+divider.Parent = mouseFrame
+divider.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+divider.BorderSizePixel = 0
+divider.Position = UDim2.new(0, lmbWidth, 0, 0)
+divider.Size = UDim2.new(0, dividerWidth, 0, buttonAreaHeight)
+
+local hDivider = Instance.new("Frame")
+hDivider.Parent = mouseFrame
+hDivider.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+hDivider.BorderSizePixel = 0
+hDivider.Position = UDim2.new(0, 7, 0, buttonAreaHeight)
+hDivider.Size = UDim2.new(0, mouseWidth - 14, 0, 1)
+
+local scrollX = math.floor((mouseWidth - scrollWheelWidth) / 2)
+local scrollY = math.floor((buttonAreaHeight - scrollWheelHeight) / 2) + 3
+local scrollWheel = Instance.new("TextButton")
+scrollWheel.Name = "MMB"
+scrollWheel.Parent = mouseFrame
+scrollWheel.BackgroundColor3 = Color3.fromRGB(70, 70, 70)
+scrollWheel.BackgroundTransparency = 0.2
+scrollWheel.BorderSizePixel = 0
+scrollWheel.Position = UDim2.new(0, scrollX, 0, scrollY)
+scrollWheel.Size = UDim2.new(0, scrollWheelWidth, 0, scrollWheelHeight)
+scrollWheel.Text = ""
+scrollWheel.AutoButtonColor = false
+scrollWheel.ZIndex = 3
+
+local scrollCorner = Instance.new("UICorner")
+scrollCorner.CornerRadius = UDim.new(0, 6)
+scrollCorner.Parent = scrollWheel
+
+local scrollStroke = Instance.new("UIStroke")
+scrollStroke.Parent = scrollWheel
+scrollStroke.Thickness = 1
+scrollStroke.Color = Color3.fromRGB(120, 120, 120)
+
+for i = 1, 3 do
+	local line = Instance.new("Frame")
+	line.Parent = scrollWheel
+	line.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
+	line.BackgroundTransparency = 0.3
+	line.BorderSizePixel = 0
+	line.Size = UDim2.new(0.5, 0, 0, 1)
+	line.Position = UDim2.new(0.25, 0, 0, 4 + (i - 1) * 5)
+	line.ZIndex = 4
 end
 
-local function calculateRotationSpeed(progress)
-    local slowdownStart = 0.6
-    local slowdownDuration = 0.35
-    local minSlowdownSpeed = 0.3
-    local baseRotationSpeedLocal = baseRotationSpeed
+local palmArea = Instance.new("Frame")
+palmArea.Parent = mouseFrame
+palmArea.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+palmArea.BackgroundTransparency = 0.5
+palmArea.BorderSizePixel = 0
+palmArea.Position = UDim2.new(0, 10, 0, buttonAreaHeight + 10)
+palmArea.Size = UDim2.new(0, mouseWidth - 20, 0, mouseHeight - buttonAreaHeight - 24)
 
-    if progress >= slowdownStart then
-        local slowdownProgress = (progress - slowdownStart) / slowdownDuration
-        local easedProgress = slowdownProgress * slowdownProgress
-        local slowdownFactor = 1 - (easedProgress * (1 - minSlowdownSpeed))
-        return baseRotationSpeedLocal * math.max(slowdownFactor, minSlowdownSpeed)
-    else
-        return baseRotationSpeedLocal
-    end
+local palmCorner = Instance.new("UICorner")
+palmCorner.CornerRadius = UDim.new(0, 15)
+palmCorner.Parent = palmArea
+
+local dpiDot = Instance.new("Frame")
+dpiDot.Parent = mouseFrame
+dpiDot.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+dpiDot.BorderSizePixel = 0
+dpiDot.Position = UDim2.new(0.5, -3, 0, buttonAreaHeight + 4)
+dpiDot.Size = UDim2.new(0, 6, 0, 6)
+
+local dpiCorner = Instance.new("UICorner")
+dpiCorner.CornerRadius = UDim.new(1, 0)
+dpiCorner.Parent = dpiDot
+
+local scrollUpArrow = Instance.new("TextLabel")
+scrollUpArrow.Parent = mouseFrame
+scrollUpArrow.BackgroundTransparency = 1
+scrollUpArrow.Position = UDim2.new(0, scrollX - 2, 0, scrollY - 12)
+scrollUpArrow.Size = UDim2.new(0, scrollWheelWidth + 4, 0, 10)
+scrollUpArrow.Font = Enum.Font.GothamBold
+scrollUpArrow.Text = "▲"
+scrollUpArrow.TextColor3 = Color3.fromRGB(80, 80, 80)
+scrollUpArrow.TextSize = 8
+scrollUpArrow.TextTransparency = 1
+scrollUpArrow.ZIndex = 4
+
+local scrollDownArrow = Instance.new("TextLabel")
+scrollDownArrow.Parent = mouseFrame
+scrollDownArrow.BackgroundTransparency = 1
+scrollDownArrow.Position = UDim2.new(0, scrollX - 2, 0, scrollY + scrollWheelHeight + 1)
+scrollDownArrow.Size = UDim2.new(0, scrollWheelWidth + 4, 0, 10)
+scrollDownArrow.Font = Enum.Font.GothamBold
+scrollDownArrow.Text = "▼"
+scrollDownArrow.TextColor3 = Color3.fromRGB(80, 80, 80)
+scrollDownArrow.TextSize = 8
+scrollDownArrow.TextTransparency = 1
+scrollDownArrow.ZIndex = 4
+
+-- Frame size
+local total_width = mouse_x + mouseWidth + 9
+local frame_height = keyboard_height + 9
+Frame.Size = UDim2.new(0, total_width, 0, frame_height)
+
+-- Key Buttons
+local buttons = {}
+for _, keyData in pairs(keys) do
+	local keyButton = Instance.new("TextButton")
+	local buttonUICorner2 = Instance.new("UICorner")
+
+	keyButton.Name = keyData.Name
+	keyButton.Parent = Frame
+	keyButton.BackgroundColor3 = Color3.fromRGB(50, 50, 50)
+	keyButton.BackgroundTransparency = 0.5
+	keyButton.BorderSizePixel = 0
+	keyButton.Position = keyData.Position
+	keyButton.Size = keyData.Size or UDim2.new(0, base_u, 0, base_u)
+	keyButton.Font = Enum.Font.GothamBold
+	keyButton.Text = keyData.Name
+	keyButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+	keyButton.TextSize = 12
+	keyButton.TextWrapped = true
+	keyButton.AutoButtonColor = false
+
+	buttonUICorner2.Parent = keyButton
+	buttons[keyData.Name] = keyButton
 end
 
-local function smoothRotation(currentRot, targetRot, smoothing)
-    return currentRot + (targetRot - currentRot) * smoothing
+buttons["LMB"] = lmbButton
+buttons["RMB"] = rmbButton
+buttons["MMB"] = scrollWheel
+
+local function updateLMBClips(color, transparency)
+	lmbClipBottom.BackgroundColor3 = color
+	lmbClipBottom.BackgroundTransparency = transparency
+	lmbClipRight.BackgroundColor3 = color
+	lmbClipRight.BackgroundTransparency = transparency
 end
 
-local function smoothPulse(t, speed)
-    local rawPulse = math.sin(t * speed) * 0.5 + 0.5
-    return rawPulse * rawPulse
+local function updateRMBClips(color, transparency)
+	rmbClipBottom.BackgroundColor3 = color
+	rmbClipBottom.BackgroundTransparency = transparency
+	rmbClipLeft.BackgroundColor3 = color
+	rmbClipLeft.BackgroundTransparency = transparency
 end
 
--- On character added, recreate GUI and restore state
-local function onCharacterAdded(character)
-    createGui()
-    restoreVisualState()
+updateLMBClips(Color3.fromRGB(50, 50, 50), 0.3)
+updateRMBClips(Color3.fromRGB(50, 50, 50), 0.3)
 
-    local humanoid = character:WaitForChild("Humanoid")
-    humanoid.Died:Connect(function()
-        saveVisualState()
-    end)
+local keyCodeToKeys = {}
+for _, keyData in pairs(keys) do
+	if keyData.KeyCode then
+		if not keyCodeToKeys[keyData.KeyCode] then
+			keyCodeToKeys[keyData.KeyCode] = {}
+		end
+		table.insert(keyCodeToKeys[keyData.KeyCode], keyData)
+	end
 end
 
-player.CharacterAdded:Connect(onCharacterAdded)
+local longPressThreshold = 0.01
+local keyPressTimes = {}
 
-if player.Character then
-    onCharacterAdded(player.Character)
+local defaultMouseBtnColor = Color3.fromRGB(50, 50, 50)
+local defaultMouseBtnTransparency = 0.3
+local activeColor = Color3.fromRGB(0, 255, 255)
+local flashColor = Color3.fromRGB(255, 255, 255)
+local defaultKeyColor = Color3.fromRGB(50, 50, 50)
+
+local function activateKey(name)
+	local button = buttons[name]
+	if not button then return end
+	keyPressTimes[name] = tick()
+	task.spawn(function()
+		task.wait(longPressThreshold)
+		if keyPressTimes[name] then
+			TweenService:Create(button, TweenInfo.new(0.1), {BackgroundColor3 = activeColor}):Play()
+		end
+	end)
 end
 
--- Animation loop
-RunService.RenderStepped:Connect(function(deltaTime)
-    if not (aimContainer and topLine and bottomLine and leftLine and rightLine and textLabel) then
-        return
-    end
+local function deactivateKey(name)
+	local button = buttons[name]
+	if not button or not keyPressTimes[name] then return end
+	local pressDuration = tick() - keyPressTimes[name]
+	keyPressTimes[name] = nil
+	if pressDuration < longPressThreshold then
+		TweenService:Create(button, TweenInfo.new(0.1), {BackgroundColor3 = flashColor}):Play()
+		task.spawn(function()
+			task.wait(0.1)
+			if not keyPressTimes[name] then
+				TweenService:Create(button, TweenInfo.new(0.1), {BackgroundColor3 = defaultKeyColor}):Play()
+			end
+		end)
+	else
+		TweenService:Create(button, TweenInfo.new(0.1), {BackgroundColor3 = defaultKeyColor}):Play()
+	end
+end
 
-    time = time + deltaTime
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if input.UserInputType == Enum.UserInputType.Keyboard then
+		local keyDataList = keyCodeToKeys[input.KeyCode]
+		if keyDataList then
+			for _, keyData in ipairs(keyDataList) do
+				activateKey(keyData.Name)
+			end
+		end
+	end
 
-    aimContainer.Position = UDim2.new(0, mouse.X, 0, mouse.Y)
-    textLabel.Position = UDim2.new(0, mouse.X - 70, 0, mouse.Y + 50)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		keyPressTimes["LMB"] = tick()
+		task.spawn(function()
+			task.wait(longPressThreshold)
+			if keyPressTimes["LMB"] then
+				TweenService:Create(lmbButton, TweenInfo.new(0.1), {BackgroundColor3 = activeColor, BackgroundTransparency = 0.1}):Play()
+				updateLMBClips(activeColor, 0.1)
+			end
+		end)
+	end
 
-    rotationProgress = (rotationProgress + currentRotationSpeed * deltaTime) % 1
-    currentRotationSpeed = calculateRotationSpeed(rotationProgress)
+	if input.UserInputType == Enum.UserInputType.MouseButton2 then
+		keyPressTimes["RMB"] = tick()
+		task.spawn(function()
+			task.wait(longPressThreshold)
+			if keyPressTimes["RMB"] then
+				TweenService:Create(rmbButton, TweenInfo.new(0.1), {BackgroundColor3 = activeColor, BackgroundTransparency = 0.1}):Play()
+				updateRMBClips(activeColor, 0.1)
+			end
+		end)
+	end
 
-    local targetRotation = rotationProgress * 360
-    smoothedRotation = smoothRotation(smoothedRotation, targetRotation, 1)
-    aimContainer.Rotation = smoothedRotation
+	if input.UserInputType == Enum.UserInputType.MouseButton3 then
+		keyPressTimes["MMB"] = tick()
+		task.spawn(function()
+			task.wait(longPressThreshold)
+			if keyPressTimes["MMB"] then
+				TweenService:Create(scrollWheel, TweenInfo.new(0.1), {BackgroundColor3 = activeColor, BackgroundTransparency = 0.1}):Play()
+			end
+		end)
+	end
 
-    local pulse = smoothPulse(time, pulseSpeed)
-    local currentLength = minLength + (maxLength - minLength) * pulse
+	if input.UserInputType == Enum.UserInputType.MouseWheel then
+		TweenService:Create(scrollWheel, TweenInfo.new(0.05), {BackgroundColor3 = flashColor, BackgroundTransparency = 0}):Play()
+		if input.Position.Z > 0 then
+			TweenService:Create(scrollUpArrow, TweenInfo.new(0.05), {TextTransparency = 0, TextColor3 = Color3.fromRGB(0, 255, 255)}):Play()
+			task.delay(0.15, function()
+				TweenService:Create(scrollUpArrow, TweenInfo.new(0.2), {TextTransparency = 1}):Play()
+			end)
+		else
+			TweenService:Create(scrollDownArrow, TweenInfo.new(0.05), {TextTransparency = 0, TextColor3 = Color3.fromRGB(0, 255, 255)}):Play()
+			task.delay(0.15, function()
+				TweenService:Create(scrollDownArrow, TweenInfo.new(0.2), {TextTransparency = 1}):Play()
+			end)
+		end
+		task.delay(0.1, function()
+			TweenService:Create(scrollWheel, TweenInfo.new(0.15), {BackgroundColor3 = Color3.fromRGB(70, 70, 70), BackgroundTransparency = 0.2}):Play()
+		end)
+	end
+end)
 
-    topLine.Size = UDim2.new(0, lineThickness, 0, currentLength)
-    bottomLine.Size = UDim2.new(0, lineThickness, 0, currentLength)
-    leftLine.Size = UDim2.new(0, currentLength, 0, lineThickness)
-    rightLine.Size = UDim2.new(0, currentLength, 0, lineThickness)
+UserInputService.InputEnded:Connect(function(input, gameProcessed)
+	if input.UserInputType == Enum.UserInputType.Keyboard then
+		local keyDataList = keyCodeToKeys[input.KeyCode]
+		if keyDataList then
+			for _, keyData in ipairs(keyDataList) do
+				deactivateKey(keyData.Name)
+			end
+		end
+	end
 
-    topLine.Position = UDim2.new(0.5, -lineThickness / 2, 0, 0)
-    bottomLine.Position = UDim2.new(0.5, -lineThickness / 2, 1, -currentLength)
-    leftLine.Position = UDim2.new(0, 0, 0.5, -lineThickness / 2)
-    rightLine.Position = UDim2.new(1, -currentLength, 0.5, -lineThickness / 2)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 and keyPressTimes["LMB"] then
+		local d = tick() - keyPressTimes["LMB"]
+		keyPressTimes["LMB"] = nil
+		if d < longPressThreshold then
+			TweenService:Create(lmbButton, TweenInfo.new(0.1), {BackgroundColor3 = flashColor, BackgroundTransparency = 0}):Play()
+			updateLMBClips(flashColor, 0)
+			task.spawn(function()
+				task.wait(0.1)
+				TweenService:Create(lmbButton, TweenInfo.new(0.1), {BackgroundColor3 = defaultMouseBtnColor, BackgroundTransparency = defaultMouseBtnTransparency}):Play()
+				updateLMBClips(defaultMouseBtnColor, defaultMouseBtnTransparency)
+			end)
+		else
+			TweenService:Create(lmbButton, TweenInfo.new(0.1), {BackgroundColor3 = defaultMouseBtnColor, BackgroundTransparency = defaultMouseBtnTransparency}):Play()
+			updateLMBClips(defaultMouseBtnColor, defaultMouseBtnTransparency)
+		end
+	end
 
-    local rainbowColor = getRainbowColor(time)
+	if input.UserInputType == Enum.UserInputType.MouseButton2 and keyPressTimes["RMB"] then
+		local d = tick() - keyPressTimes["RMB"]
+		keyPressTimes["RMB"] = nil
+		if d < longPressThreshold then
+			TweenService:Create(rmbButton, TweenInfo.new(0.1), {BackgroundColor3 = flashColor, BackgroundTransparency = 0}):Play()
+			updateRMBClips(flashColor, 0)
+			task.spawn(function()
+				task.wait(0.1)
+				TweenService:Create(rmbButton, TweenInfo.new(0.1), {BackgroundColor3 = defaultMouseBtnColor, BackgroundTransparency = defaultMouseBtnTransparency}):Play()
+				updateRMBClips(defaultMouseBtnColor, defaultMouseBtnTransparency)
+			end)
+		else
+			TweenService:Create(rmbButton, TweenInfo.new(0.1), {BackgroundColor3 = defaultMouseBtnColor, BackgroundTransparency = defaultMouseBtnTransparency}):Play()
+			updateRMBClips(defaultMouseBtnColor, defaultMouseBtnTransparency)
+		end
+	end
 
-    topLine.BackgroundColor3 = rainbowColor
-    bottomLine.BackgroundColor3 = rainbowColor
-    leftLine.BackgroundColor3 = rainbowColor
-    rightLine.BackgroundColor3 = rainbowColor
+	if input.UserInputType == Enum.UserInputType.MouseButton3 and keyPressTimes["MMB"] then
+		local d = tick() - keyPressTimes["MMB"]
+		keyPressTimes["MMB"] = nil
+		if d < longPressThreshold then
+			TweenService:Create(scrollWheel, TweenInfo.new(0.1), {BackgroundColor3 = flashColor, BackgroundTransparency = 0}):Play()
+			task.spawn(function()
+				task.wait(0.1)
+				TweenService:Create(scrollWheel, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(70, 70, 70), BackgroundTransparency = 0.2}):Play()
+			end)
+		else
+			TweenService:Create(scrollWheel, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(70, 70, 70), BackgroundTransparency = 0.2}):Play()
+		end
+	end
+end)
 
-    textLabel.TextColor3 = rainbowColor
+-- Draggify
+local dragging, dragStart, startPos
+Frame.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton1 then
+		dragging = true
+		dragStart = input.Position
+		startPos = Frame.Position
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then
+				dragging = false
+			end
+		end)
+	end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+	if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+		local delta = input.Position - dragStart
+		Frame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+	end
 end)
