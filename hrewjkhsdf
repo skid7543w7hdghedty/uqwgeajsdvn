@@ -1,0 +1,72 @@
+local player = game.Players.LocalPlayer
+while not player do
+    wait()
+    player = game.Players.LocalPlayer
+end
+
+
+local function StopAnimations(character)
+    local animateScript = character:WaitForChild("Animate")
+    local humanoid = character:WaitForChild("Humanoid")
+    local animator = humanoid:WaitForChild("Animator")
+
+    animateScript.Disabled = false
+    for _, track in pairs(animator:GetPlayingAnimationTracks()) do
+        track:Stop()
+    end
+end
+
+
+local function ApplyCustomAnimations(character)
+    local humanoid = character:WaitForChild("Humanoid")
+
+
+    if humanoid.RigType ~= Enum.HumanoidRigType.R15 then
+        warn("❌ R6 detected - R15 only bro?")
+        return
+    end
+
+    local animateScript = character:WaitForChild("Animate")
+
+    StopAnimations(character)
+
+    -- Idle animations
+    animateScript.idle.Animation1.AnimationId = "rbxassetid://891621366"
+    animateScript.idle.Animation2.AnimationId = "rbxassetid://891633237"
+
+    -- Pose animation
+    if animateScript.idle:FindFirstChild("Animation3") then
+        animateScript.idle.Animation3.AnimationId = "rbxassetid://1047759695"
+    else
+        local pose = Instance.new("Animation")
+        pose.Name = "Animation3"
+        pose.AnimationId = "rbxassetid://1047759695"
+        pose.Parent = animateScript.idle
+    end
+
+    -- Walk animation
+    animateScript.walk.WalkAnim.AnimationId = "rbxassetid://707897309"
+    -- Run animation
+    animateScript.run.RunAnim.AnimationId = "rbxassetid://616163682"
+    -- Jump animation
+    animateScript.jump.JumpAnim.AnimationId = "rbxassetid://656117878"
+    -- Climb animation
+    animateScript.climb.ClimbAnim.AnimationId = "rbxassetid://10921229866"
+    -- Fall animation
+    animateScript.fall.FallAnim.AnimationId = "rbxassetid://656115606"
+
+    humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+    animateScript.Disabled = false
+
+    print("✅ Animations applied successfully")
+end
+
+
+if player.Character then
+    ApplyCustomAnimations(player.Character)
+end
+
+
+player.CharacterAdded:Connect(function(character)
+    ApplyCustomAnimations(character)
+end) 
